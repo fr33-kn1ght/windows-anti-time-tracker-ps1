@@ -42,7 +42,12 @@ public class Native
 }
 "@
 
-$paused = $false
+function Log {
+    param([string]$Message)
+
+    $time = Get-Date -Format "HH:mm:ss"
+    Write-Host "[$time] $Message"
+}
 
 function Press-Key {
     param([byte]$vk)
@@ -64,7 +69,7 @@ function Move-Smooth {
     $startX = $p.X
     $startY = $p.Y
 
-    $steps = Get-Random -Minimum 10 -Maximum 30
+    $steps = Get-Random -Minimum 10 -Maximum 25
 
     for ($i = 1; $i -le $steps; $i++) {
 
@@ -72,84 +77,130 @@ function Move-Smooth {
         $y = [int]($startY + (($TargetY - $startY) * $i / $steps))
 
         [Native]::SetCursorPos($x, $y) | Out-Null
-        Start-Sleep -Milliseconds (Get-Random -Minimum 5 -Maximum 20)
+
+        Start-Sleep -Milliseconds (
+            Get-Random -Minimum 5 -Maximum 15
+        )
     }
 }
 
-Write-Host ""
-Write-Host "F8 - Pause/Resume"
-Write-Host "F9 - Exit"
-Write-Host ""
+$paused = $false
 
 $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 
+Log "Started"
+Log "F8 - Pause/Resume"
+Log "F9 - Exit"
+
 while ($true)
 {
-    # F9 - выход
-    if ([Native]::GetAsyncKeyState(0x78)) { # F9
-        Write-Host "Exit"
+    if ([Native]::GetAsyncKeyState(0x78))
+    {
+        Log "Exit"
         break
     }
 
-    # F8 - переключение паузы
-    if ([Native]::GetAsyncKeyState(0x77)) { # F8
+    if ([Native]::GetAsyncKeyState(0x77))
+    {
         $paused = -not $paused
 
         if ($paused) {
-            Write-Host "Paused"
+            Log "Paused"
         }
         else {
-            Write-Host "Resumed"
+            Log "Resumed"
         }
 
         Start-Sleep -Milliseconds 500
     }
 
-    if ($paused) {
+    if ($paused)
+    {
         Start-Sleep -Milliseconds 200
         continue
     }
 
-    $action = Get-Random -Minimum 0 -Maximum 10
+    $r = Get-Random -Minimum 1 -Maximum 101
 
-    switch ($action)
+    if ($r -le 75)
     {
-        {$_ -le 5} {
-            # Плавный небольшой сдвиг мыши
-            $p = New-Object Native+POINT
-            [Native]::GetCursorPos([ref]$p) | Out-Null
+        $p = New-Object Native+POINT
+        [Native]::GetCursorPos([ref]$p) | Out-Null
 
-            $newX = $p.X + (Get-Random -Minimum -50 -Maximum 51)
-            $newY = $p.Y + (Get-Random -Minimum -50 -Maximum 51)
+        $microMove = (Get-Random -Minimum 1 -Maximum 101) -le 30
 
-            $newX = [Math]::Max(0, [Math]::Min($newX, $screen.Width - 1))
-            $newY = [Math]::Max(0, [Math]::Min($newY, $screen.Height - 1))
-
-            Move-Smooth $newX $newY
+        if ($microMove)
+        {
+            $dx = Get-Random -Minimum -5 -Maximum 6
+            $dy = Get-Random -Minimum -5 -Maximum 6
+        }
+        else
+        {
+            $dx = Get-Random -Minimum -50 -Maximum 51
+            $dy = Get-Random -Minimum -50 -Maximum 51
         }
 
-        6 {
-            # Колесо вверх
-            [Native]::mouse_event(
-                [Native]::MOUSEEVENTF_WHEEL,
-                0,0,120,[UIntPtr]::Zero)
-        }
+        $newX = $p.X + $dx
+        $newY = $p.Y + $dy
 
-        7 {
-            # Колесо вниз
-            [Native]::mouse_event(
-                [Native]::MOUSEEVENTF_WHEEL,
-                0,0,[uint32]-120,[UIntPtr]::Zero)
-        }
+        $newX = [Math]::Max(
+            0,
+            [Math]::Min($newX, $screen.Width - 1)
+        )
 
-        8 {
-            Press-Key 0x20  # Space
-        }
+        $newY = [Math]::Max(
+            0,
+            [Math]::Min($newY, $screen.Height - 1)
+        )
 
-        9 {
-            Press-Key (Get-Random @(0x10,0x11,0x12)) # Shift/Ctrl/Alt
+        Move-Smooth $newX $newY
+
+        Log "Mouse move -> ($newX,$newY)"
+    }
+    elseif ($r -le 90)
+    {
+        $delta = @(120,-120) | Get-Random
+
+        [Native]::mouse_event(
+            [Native]::MOUSEEVENTF_WHEEL,
+            0,
+            0,
+            [uint32]$delta,
+            [UIntPtr]::Zero
+        )
+
+        if ($delta -gt 0)
+        {
+            Log "Wheel UP"
+        }
+        else
+        {
+            Log "Wheel DOWN"
         }
     }
+    elseif ($r -le 95)
+    {
+        Press-Key 0x20
+        Log "Key SPACE"
+    }
+    else
+    {
+        $keys = @{
+            0x10 = "SHIFT"
+            0x11 = "CTRL"
+            0x12 = "ALT"
+        }
 
-    Start-Sleep -Seconds (Get-Random -Minimum 3 -Maximum 15)
+        $vk = $keys.Keys | Get-Random
+
+        Press-Key $vk
+
+        Log "Key $($keys[$vk])"
+    }
+
+    $delay = Get-Random -Minimum 3 -Maximum 15
+
+    Log "Sleep $delay sec"
+
+    Start-Sleep -Seconds $delay
 }
